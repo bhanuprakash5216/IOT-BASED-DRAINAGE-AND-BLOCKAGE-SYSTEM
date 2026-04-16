@@ -1,0 +1,118 @@
+#include <ESP8266WiFi.h>
+#include <FirebaseESP8266.h>
+
+
+#define WIFI_SSID "WIFI_NMAE"
+#define WIFI_PASSWORD "WIFI_PASSKEY"
+
+
+#define API_KEY "SUPABASE API KET"
+#define DATABASE_URL "SUPABASE URL"
+
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+#define TRIG_PIN D5
+#define ECHO_PIN D6
+#define GAS_PIN A0
+#define LED_PIN D2
+#define BUZZER_PIN D7
+
+
+
+void connectWiFi() {
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  Serial.print("Connecting to WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\n✅ WiFi Connected");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+
+long getDistanceCM() {
+
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  long distance = duration * 0.034 / 2;
+
+  return distance;
+}
+
+
+void setup() {
+
+  Serial.begin(9600);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  digitalWrite(LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+
+
+  connectWiFi();
+
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  Serial.println("✅ Firebase Connected");
+}
+
+
+void loop() {
+
+  long waterLevel = getDistanceCM();   
+  int gasLevel = analogRead(GAS_PIN);  
+  bool alertStatus = false;
+
+
+  if (waterLevel < 15 || gasLevel > 400) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    alertStatus = true;
+  }
+  else {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  Serial.print("Water: ");
+  Serial.print(waterLevel);
+  Serial.print(" cm | Gas: ");
+  Serial.print(gasLevel);
+  Serial.print(" | Alert: ");
+  Serial.println(alertStatus);
+
+  if (Firebase.ready()) {
+
+    Firebase.setInt(fbdo, "/drainage/water_level", waterLevel);
+    Firebase.setInt(fbdo, "/drainage/gas_level", gasLevel);
+    Firebase.setBool(fbdo, "/drainage/alert", alertStatus);
+  }
+
+  delay(2000);
+}
